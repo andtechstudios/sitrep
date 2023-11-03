@@ -1,6 +1,6 @@
 env:
   NUGET_SOURCE_URL: ${{secrets.GITLAB_PKG_URL}}/nuget
-  NUGET_PROJECT_DIR: src
+  NUGET_PROJECT_DIR: src/Andtech.Sitrep.csproj
   NUGET_USER_NAME: ${{secrets.GITLAB_ACCESS_TOKEN_OWNER}}
   NUGET_API_KEY: ${{secrets.GITLAB_ACCESS_TOKEN}}
 
