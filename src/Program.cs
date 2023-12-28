@@ -3,77 +3,76 @@ using Andtech.Common;
 using Andtech.Sitrep;
 using Humanizer;
 
+// Locals
 var devMode = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DEV_MODE"));
 var issueUrl = Environment.GetEnvironmentVariable("ISSUE_URL");
 var tagLevels = 6;
+
+// Begin program
 var tagsString = await Util.GitAsync("tag --list \"v*\" --sort=-v:refname");
 var tags = Regex.Split(tagsString.Trim(), @"\s+")
 	.Take(tagLevels)
 	.ToList();
-
 DateTime currentDay = DateTime.UnixEpoch;
 HashSet<int> issuesToIgnore = new HashSet<int>();
-
-await ReadCommitsAsync();
-
-async Task ReadCommitsAsync()
+// Loop through tags (most recent to oldest)
+for (int i = 0; i < tags.Count; i++)
 {
-	// Loop through tags (most recent to oldest)
-	for (int i = 0; i < tags.Count; i++)
-	{
-		var range = i + 1 < tags.Count ? $"{tags[i + 1]}..{tags[i]}" : $"{tags[i]}";
-		var lines = (await Util.GitAsync($"log --pretty=format:%h|%ad|%s --date=iso {range}"))
-			.Split("\n", StringSplitOptions.RemoveEmptyEntries);
+	var range = i + 1 < tags.Count ? $"{tags[i + 1]}..{tags[i]}" : $"{tags[i]}";
+	var lines = (await Util.GitAsync($"log --pretty=format:%h|%ad|%s --date=iso {range}"))
+		.Split("\n", StringSplitOptions.RemoveEmptyEntries);
 
-		// Heading
+	// Heading
+	if (devMode)
+	{
+		Log.WriteLine($"# {tags[i]}");
+	}
+
+	// Iterate through commits
+	bool hasAnyCommits = false;
+	foreach (var line in lines)
+	{
+		var tokens = line.Split("|");
+		var hash = tokens[0];
+		var date = DateTime.Parse(tokens[1]);
+		var message = await Util.GitAsync($"show --format=%B -s {hash}");
+
+		var commit = new Commit(hash)
+		{
+			Tag = tags[i],
+			Date = date,
+			Message = Message.Parse(message),
+		};
+		if (!FilterCommit(commit))
+		{
+			continue;
+		}
+
+		// Process commit
 		if (devMode)
 		{
-			Log.WriteLine($"# {tags[i]}");
+
 		}
-		bool hasAnyCommits = false;
-		foreach (var line in lines)
+		else
 		{
-			var tokens = line.Split("|");
-			var hash = tokens[0];
-			var date = DateTime.Parse(tokens[1]);
-			var message = await Util.GitAsync($"show --format=%B -s {hash}");
-
-			var commit = new Commit(hash)
+			if (commit.Date != currentDay)
 			{
-				Tag = tags[i],
-				Date = date,
-				Message = Message.Parse(message),
-			};
-			if (!FilterCommit(commit))
-			{
-				continue;
+				// Date heading
+				Log.WriteLine($"# {commit.Date:yyyy-MM-dd}");
+				currentDay = commit.Date;
 			}
-
-			// Print
-			if (devMode)
-			{
-
-			}
-			else
-			{
-				if (commit.Date != currentDay)
-				{
-					Log.WriteLine($"# {commit.Date:yyyy-MM-dd}");
-					currentDay = commit.Date;
-				}
-			}
-			WriteCommit(commit);
-			hasAnyCommits = true;
 		}
-
-		if (hasAnyCommits)
-		{
-			Log.WriteLine();
-		}
+		ProcessCommit(commit);
+		hasAnyCommits = true;
+	}
+	
+	if (hasAnyCommits)
+	{
+		Log.WriteLine();
 	}
 }
 
-void WriteCommit(Commit commit)
+void ProcessCommit(Commit commit)
 {
 	string line;
 	// Add message
